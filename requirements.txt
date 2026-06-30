@@ -1,2 +1,2 @@
 streamlit
-st-theme-gsheets-connection
+streamlit-gsheets-connection

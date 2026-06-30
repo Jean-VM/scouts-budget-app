@@ -1,5 +1,6 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+# Le nouveau nom d'importation officiel de la bibliothèque :
+from library.st_gsheets_connection import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 

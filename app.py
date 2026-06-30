@@ -83,17 +83,53 @@ with tab1:
     else:
         st.success(f"🟢 Tout va bien, le buffer de 5900$ est intact. Capacité restante avant danger : {TOTAL_BUDGETED - total_spent:.2f}$")
 
-    st.subheader("📈 Courbe des dépenses")
+    st.subheader("📈 Courbe, Limites Globales et Budgets par Catégorie")
     if not df_expenses.empty:
         df_copy = df_expenses.copy()
+        # Conversion propre en vraies dates
         df_copy["Timestamp"] = pd.to_datetime(df_copy["Timestamp"], errors='coerce')
         df_sorted = df_copy.dropna(subset=["Timestamp"]).sort_values("Timestamp")
         
         if not df_sorted.empty:
-            df_sorted["Cumsum"] = df_sorted["Amount"].cumsum()
-            st.line_chart(df_sorted.set_index("Timestamp")["Cumsum"])
+            # 1. Calcul de la courbe principale (Dépenses réelles cumulées)
+            df_sorted["💰 Dépenses Totales Cumulées"] = df_sorted["Amount"].cumsum()
+            
+            # 2. Ajout des lignes de repères globaux
+            df_sorted["🔴 Limite Budget Cible (19.3k $)"] = TOTAL_BUDGETED
+            df_sorted["🚨 Budget Max avec Buffer (25.2k $)"] = STARTING_BUDGET
+            
+            # 3. Ajout des lignes horizontales pour CHAQUE catégorie
+            for cat, limit in CATEGORIES.items():
+                df_sorted[f"📂 Limite {cat} ({limit} $)"] = limit
+            
+            # Liste complète des colonnes à afficher dans l'ordre de la légende
+            columns_to_show = [
+                "💰 Dépenses Totales Cumulées",
+                "🔴 Limite Budget Cible (19.3k $)",
+                "🚨 Budget Max avec Buffer (25.2k $)"
+            ] + [f"📂 Limite {cat} ({limit} $)" for cat in CATEGORIES.keys()]
+            
+            # Préparation des données finales avec l'Axe X (Timestamp)
+            df_chart = df_sorted.set_index("Timestamp")[columns_to_show]
+            
+            # 4. Attribution d'un beau code couleur explicite
+            # Ordre des couleurs : Dépenses (Bleu vif), Cible (Rouge), Max (Noir/Alerte), puis les 6 catégories
+            chart_colors = [
+                "#29b5e8",  # Bleu vif pour le cumulé
+                "#ff4b4b",  # Rouge pour la zone de danger théorique
+                "#111111",  # Noir pour le hard-cap (Buffer épuisé)
+                "#2ca02c",  # Vert (Bus)
+                "#9467bd",  # Violet (Car & Fuel)
+                "#8c564b",  # Marron (Wood)
+                "#e377c2",  # Rose (Food)
+                "#ff7f0e",  # Orange (Bread)
+                "#bcbd22"   # Olive (General material)
+            ]
+            
+            # Affichage du graphique de lignes
+            st.line_chart(df_chart, color=chart_colors)
     else:
-        st.info("Aucune dépense pour le moment. La courbe apparaîtra ici.")
+        st.info("Aucune dépense pour le moment. Le graphique affichera vos lignes de repères dès la première saisie.")
 
     st.subheader("📂 Statut par Catégorie")
     for cat, limit in CATEGORIES.items():

@@ -37,7 +37,7 @@ CATEGORIES = {
 
 # --- FONCTION POUR ENVOYER L'EMAIL ---
 def send_email_notification(leader_name, title, amount, category):
-    url = f"https://formsubmit.co/ajax/{CHEF_FINANCES_EMAIL}"
+    url = f"https://formsubmit.co/el/guzado"
     payload = {
         "Sujet": f"🚨 Demande de remboursement Scout - {leader_name}",
         "Chef": leader_name,

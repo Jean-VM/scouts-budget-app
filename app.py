@@ -113,10 +113,10 @@ with tab1:
                 df_sorted[label_cat] = float(limit)
                 columns_to_show.append(label_cat)
             
-            # Préparation des données finales avec l'Axe X (Timestamp) [cite: 12, 13]
-            df_chart = df_sorted.set_index("Timestamp")[columns_to_show] [cite: 13]
+            # Préparation des données finales avec l'Axe X (Timestamp) 
+            df_chart = df_sorted.set_index("Timestamp")[columns_to_show]
             
-            # 5. Palette de couleurs explicite [cite: 14]
+            # 5. Palette de couleurs explicite 
             base_colors = [
                 "#29b5e8",  # Bleu vif (Dépenses cumulées)
                 "#ff4b4b",  # Rouge (Cible)

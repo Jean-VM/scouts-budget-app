@@ -2,21 +2,30 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
+import requests  # Nécessaire pour envoyer l'e-mail via API
 
-# Configuration de la page
-st.set_page_config(page_title="Suivi Budgétaire Camp 2026", layout="centered")
+# Configuration de la page mobile-friendly
+st.set_page_config(page_title="Scout Budget 2026", page_icon="🏕️", layout="centered")
 
-# Configuration des paramètres généraux
+# --- CONFIGURATION DE L'EMAIL DU CHEF FINANCES ---
+# ⚠️ REMPLACE PAR TON ADRESSE EMAIL ICI :
 CHEF_FINANCES_EMAIL = "jean.vandermeulen1160@gmail.com"
-STARTING_BUDGET = 25200
-TOTAL_BUDGETED = 19300  
-BUFFER_ZONE = 5900      
 
+# 1. Connexion sécurisée au Google Sheet
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- CONFIGURATION DES DONNÉES DU CAMP ---
+STARTING_BUDGET = 25200
+TOTAL_BUDGETED = 19300  # Somme de toutes les catégories
+BUFFER_ZONE = 5900      # Ce qu'il doit rester à la fin
+
+# Liste des 11 chefs
 LEADERS = [
     "Babar", "Fel", "guigui", "Jojo", "Koati", "loulou", 
     "nicogigi", "nichto", "Paf", "wombat", "XeimmmXeimmm"
 ]
 
+# Catégories de dépenses et leurs limites
 CATEGORIES = {
     "Bus": 7300,
     "Car & Fuel": 2500,
@@ -26,10 +35,24 @@ CATEGORIES = {
     "General material": 1000
 }
 
-# Initialisation de la connexion Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- FONCTION POUR ENVOYER L'EMAIL ---
+def send_email_notification(leader_name, title, amount, category):
+    url = f"https://formsubmit.co/el/guzado"
+    payload = {
+        "Sujet": f"🚨 Demande de remboursement Scout - {leader_name}",
+        "Chef": leader_name,
+        "Dépense": title,
+        "Montant": f"{amount} $",
+        "Catégorie": category,
+        "Message": f"Salut ! {leader_name} vient de déclarer une dépense payée de sa poche. Pense à le rembourser."
+    }
+    try:
+        response = requests.post(url, json=payload)
+        return response.status_code == 200
+    except Exception:
+        return False
 
-# Chargement et nettoyage des données
+# --- CHARGEMENT DES DONNÉES ---
 try:
     df_expenses = conn.read(worksheet="Expenses", ttl=0)
     if df_expenses.empty or "Amount" not in df_expenses.columns:
@@ -39,117 +62,119 @@ try:
 except Exception:
     df_expenses = pd.DataFrame(columns=["Timestamp", "Name", "Title", "Amount", "Category", "Payment Method", "Reimbursement Status"])
 
-# Système de navigation
-tab1, tab2 = st.tabs(["Tableau de Bord", "Saisie d'une Dépense"])
+# --- NAVIGATION ---
+tab1, tab2 = st.tabs(["📊 Tableau de Bord", "➕ Ajouter une Dépense"])
 
 # ==========================================
-# ONGLEUR 1 : TABLEAU DE BORD
+# TAB 1 : TABLEAU DE BORD
 # ==========================================
 with tab1:
-    st.title("Suivi Budgétaire Consolidé")
+    st.title("🏕️ Suivi du Budget - Scout Camp")
     
     total_spent = df_expenses["Amount"].sum()
     remaining_total = STARTING_BUDGET - total_spent
     
-    st.metric(label="Total Engagé", value=f"{total_spent:.2f} $ / {TOTAL_BUDGETED} $")
+    st.metric(label="💰 Total Dépensé", value=f"{total_spent:.2f} $ / {TOTAL_BUDGETED} $")
     
-    # Alertes de gestion des risques
     if total_spent > TOTAL_BUDGETED:
-        st.error(f"Dépassement du budget alloué. Prélèvement sur la réserve de secours. Solde total restant : {remaining_total:.2f} $.")
+        st.error(f"⚠️ DANGER ZONE !! On pioche dans les 5900$ de buffer ! Il reste {remaining_total:.2f}$ au total.")
     elif total_spent > (TOTAL_BUDGETED * 0.85):
-        st.warning(f"Seuil d'alerte atteint (85%). Volume des dépenses cumulées : {total_spent:.2f} $.")
+        st.warning(f"🟠 On approche de la zone rouge. Danger imminent. Dépenses actuelles : {total_spent:.2f}$")
     else:
-        st.success(f"Situation nominale. Réserve de secours de {BUFFER_ZONE} $ préservée. Marge disponible avant alerte : {TOTAL_BUDGETED - total_spent:.2f} $.")
+        st.success(f"🟢 Tout va bien, le buffer de 5900$ est intact. Capacité restante avant danger : {TOTAL_BUDGETED - total_spent:.2f}$")
 
-    # Section Graphique
-    st.subheader("Analyse Graphique Temporelle et Limites")
+    st.subheader("📈 Courbe, Limites Globales et Budgets par Catégorie")
     if not df_expenses.empty:
         df_copy = df_expenses.copy()
+        # Conversion propre en vraies dates
         df_copy["Timestamp"] = pd.to_datetime(df_copy["Timestamp"], errors='coerce')
         df_sorted = df_copy.dropna(subset=["Timestamp"]).sort_values("Timestamp")
         
         if not df_sorted.empty:
-            # Initialisation du dictionnaire de données pour l'axe temporel
-            chart_data = {
-                "Dépenses Totales Cumulées": df_sorted["Amount"].cumsum(),
-                f"Seuil Budget Cible ({TOTAL_BUDGETED} $)": [float(TOTAL_BUDGETED)] * len(df_sorted),
-                f"Plafond Absolu ({STARTING_BUDGET} $)": [float(STARTING_BUDGET)] * len(df_sorted)
-            }
+            # 1. Initialisation des listes pour le graphique
+            columns_to_show = ["💰 Dépenses Totales Cumulées"]
             
-            # Définition stricte de la charte graphique par catégorie
-            category_styles = {
-                "Bus": {"color_real": "#2ca02c", "color_lim": "#a1d99b"},
-                "Car & Fuel": {"color_real": "#9467bd", "color_lim": "#bcbddc"},
-                "Wood for constructions": {"color_real": "#8c564b", "color_lim": "#c49c94"},
-                "Food": {"color_real": "#e377c2", "color_lim": "#f7b6d2"},
-                "Bread": {"color_real": "#ff7f0e", "color_lim": "#ffbb78"},
-                "General material": {"color_real": "#bcbd22", "color_lim": "#dbdb8d"}
-            }
+            # Calcul de la courbe principale (Dépenses réelles cumulées)
+            df_sorted["💰 Dépenses Totales Cumulées"] = df_sorted["Amount"].cumsum()
             
-            # Définition de l'ordre des couleurs globales
-            color_palette = [
-                "#29b5e8",  # Dépenses Totales Cumulées (Bleu corporate)
-                "#ff4b4b",  # Seuil Budget Cible (Rouge alerte)
-                "#111111"   # Plafond Absolu (Noir)
-            ]
+            # 2. Ajout dynamique de la ligne Budget Cible
+            label_cible = f"🔴 Limite Budget Cible ({TOTAL_BUDGETED} $)"
+            df_sorted[label_cible] = float(TOTAL_BUDGETED)
+            columns_to_show.append(label_cible)
             
-            # Calcul des courbes réelles et théoriques par catégorie
+            # 3. Ajout dynamique de la ligne Budget Max
+            label_max = f"🚨 Budget Max avec Buffer ({STARTING_BUDGET} $)"
+            df_sorted[label_max] = float(STARTING_BUDGET)
+            columns_to_show.append(label_max)
+            
+            # 4. Ajout dynamique de CHAQUE catégorie
             for cat, limit in CATEGORIES.items():
-                styles = category_styles[cat]
-                
-                # Calcul de la dépense cumulative spécifique à la catégorie à chaque point temporel
-                cat_mask = df_sorted["Category"] == cat
-                df_sorted[f"cum_{cat}"] = df_sorted["Amount"].where(cat_mask, 0).cumsum()
-                
-                # Ajout des séries au graphique
-                chart_data[f"Cumul Réel - {cat}"] = df_sorted[f"cum_{cat}"]
-                chart_data[f"Limite Fixe - {cat} ({limit} $)"] = [float(limit)] * len(df_sorted)
-                
-                # Appariement des couleurs (Couleur vive pour le réel, version pastel pour sa limite)
-                color_palette.append(styles["color_real"])
-                color_palette.append(styles["color_lim"])
+                label_cat = f"📂 Limite {cat} ({limit} $)"
+                df_sorted[label_cat] = float(limit)
+                columns_to_show.append(label_cat)
             
-            # Génération du DataFrame pour l'affichage
-            df_chart = pd.DataFrame(chart_data, index=df_sorted["Timestamp"])
-            st.line_chart(df_chart, color=color_palette)
+            # Préparation des données finales avec l'Axe X (Timestamp) 
+            df_chart = df_sorted.set_index("Timestamp")[columns_to_show]
+            
+            # 5. Palette de couleurs explicite 
+            base_colors = [
+                "#29b5e8",  # Bleu vif (Dépenses cumulées)
+                "#ff4b4b",  # Rouge (Cible)
+                "#111111",  # Noir (Max)
+                "#2ca02c",  # Vert (Bus)
+                "#9467bd",  # Violet (Car & Fuel)
+                "#8c564b",  # Marron (Wood)
+                "#e377c2",  # Rose (Food)
+                "#ff7f0e",  # Orange (Bread)
+                "#bcbd22"   # Olive (General material)
+            ]
+            chart_colors = base_colors[:len(columns_to_show)]
+            
+            # Affichage du graphique de lignes
+            st.line_chart(df_chart, color=chart_colors)
         else:
-            st.info("Données chronologiques insuffisantes pour générer la courbe.")
+            st.info("En attente de données valides avec une date pour afficher le graphique.")
     else:
-        st.info("Aucun historique disponible.")
-
-    # États de progression individuels par catégorie
-    st.subheader("État des Budgets Sectoriels")
+        st.info("Aucune dépense pour le moment. Le graphique affichera vos lignes de repères dès la première saisie.")
+    st.subheader("📂 Statut par Catégorie")
     for cat, limit in CATEGORIES.items():
         cat_spent = df_expenses[df_expenses["Category"] == cat]["Amount"].sum()
         pct = min(cat_spent / limit, 1.0) if limit > 0 else 0
         
-        st.write(f"**{cat}** : {cat_spent:.2f} $ / {limit} $")
-        st.progress(pct)
+        st.write(f"**{cat}** : {cat_spent:.2f}$ / {limit}$")
+        if cat_spent > limit:
+            st.progress(pct)
+            st.caption(f"❌ DÉPASSÉ DE {cat_spent - limit:.2f}$ !")
+        else:
+            st.progress(pct)
 
 # ==========================================
-# ONGLEUR 2 : SAISIE D'UNE DÉPENSE
+# TAB 2 : FORMULAIRE D'AJOUT
 # ==========================================
 with tab2:
-    st.title("Enregistrement d'un Flux Sortant")
+    st.title("➕ Nouvelle Dépense")
     
-    name = st.radio("Identité du déclarant :", LEADERS, index=0, horizontal=True)
-    title = st.text_input("Désignation de la dépense (ex: Facture carburant, Approvisionnement nourriture)", "")
-    amount = st.number_input("Montant exact (en USD)", min_value=0.0, step=0.05, format="%.2f")
-    category = st.selectbox("Affectation budgétaire :", list(CATEGORIES.keys()))
+    st.write("**Qui es-tu ?**")
+    name = st.radio("Sélectionne ton nom :", LEADERS, index=0, horizontal=True)
     
-    is_troop_card = st.toggle("Paiement via la carte de l'Unité", value=True)
+    title = st.text_input("Titre de la dépense (ex: '20kg de Pâtes')", "")
+    amount = st.number_input("Montant (en $)", min_value=0.0, step=0.50, format="%.2f")
+    category = st.selectbox("Catégorie :", list(CATEGORIES.keys()))
     
-    payment_method = "Carte Groupe" if is_troop_card else "Fonds Propres"
-    reimbursement = "Non" if is_troop_card else "Oui"
+    is_troop_card = st.toggle("Payé avec la carte de l'Unité / de la Troupe", value=True)
+    
+    payment_method = "Carte Groupe" if is_troop_card else "Poche Perso"
+    reimbursement = "Non" if is_troop_card else "OUI (À rembourser)"
     
     if not is_troop_card:
-        st.info(f"Note : Un flux sortant sur fonds propres génère une procédure d'approbation de remboursement par courriel vers {CHEF_FINANCES_EMAIL}.")
+        st.info(f"💡 Une notification par e-mail sera envoyée automatiquement à {CHEF_FINANCES_EMAIL}")
 
-    if st.button("Valider la transaction", use_container_width=True):
+    if st.button("🚀 Valider la dépense", use_container_width=True):
         if title == "" or amount <= 0:
-            st.error("Données invalides. Veuillez spécifier un libellé et un montant strictement positif.")
+            st.error("Veuillez entrer un titre et un montant valide.")
         else:
-            with st.spinner("Transmission des données vers le registre central..."):
+            with st.spinner("Enregistrement dans Google Sheets..."):
+                # Création de la ligne
                 timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 new_row = pd.DataFrame([{
                     "Timestamp": timestamp_str,
@@ -161,26 +186,18 @@ with tab2:
                     "Reimbursement Status": reimbursement
                 }])
                 
-                # Transaction d'écriture sécurisée
+                # Sauvegarde robuste (Read -> Append -> Update)
                 df_actuel = conn.read(worksheet="Expenses", ttl=0)
                 df_mis_a_jour = pd.concat([df_actuel, new_row], ignore_index=True)
                 conn.update(worksheet="Expenses", data=df_mis_a_jour)
                 
-                st.success("Transaction enregistrée avec succès dans le registre comptable.")
+                # Envoi du mail si remboursement nécessaire
+                if reimbursement == "OUI (À rembourser)":
+                    email_sent = send_email_notification(name, title, amount, category)
+                    if email_sent:
+                        st.toast("📧 E-mail de notification envoyé au chef finances !", icon="📩")
+                    else:
+                        st.toast("⚠️ Dépense sauvée, mais l'envoi du mail a échoué.", icon="❌")
                 
-                # Génération de la procédure de remboursement (Lien direct mailto)
-                if reimbursement == "Oui":
-                    sujet = f"Demande de remboursement - {name}".replace(" ", "%20")
-                    corps_mail = (
-                        f"Bonjour,%0A%0A"
-                        f"Une nouvelle écriture sur fonds propres nécessite une régularisation :%0A"
-                        f"- Opérateur : {name}%0A"
-                        f"- Intitulé : {title}%0A"
-                        f"- Volume financier : {amount} $%0A"
-                        f"- Poste budgétaire : {category}%0A%0A"
-                        f"Veuillez valider le virement de régularisation.".replace(" ", "%20")
-                    )
-                    mailto_url = f"mailto:{CHEF_FINANCES_EMAIL}?subject={sujet}&body={corps_mail}"
-                    
-                    st.warning("Action requise : Veuillez formaliser la demande en soumettant le courriel pré-rempli ci-dessous.")
-                    st.link_button("Transmettre la demande de remboursement", mailto_url, use_container_width=True)
+                st.success("Dépense enregistrée avec succès !")
+                st.balloons()

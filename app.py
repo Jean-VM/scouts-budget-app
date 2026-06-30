@@ -91,35 +91,42 @@ with tab1:
         df_sorted = df_copy.dropna(subset=["Timestamp"]).sort_values("Timestamp")
         
         if not df_sorted.empty:
-            # 1. Calcul de la courbe principale (Dépenses réelles cumulées)
+            # 1. Initialisation des listes pour le graphique
+            columns_to_show = ["💰 Dépenses Totales Cumulées"]
+            
+            # Calcul de la courbe principale (Dépenses réelles cumulées)
             df_sorted["💰 Dépenses Totales Cumulées"] = df_sorted["Amount"].cumsum()
             
-            # 2. Ajout des lignes de repères globaux
-            df_sorted["🔴 Limite Budget Cible (19.3k $)"] = float(TOTAL_BUDGETED)
-            df_sorted["🚨 Budget Max avec Buffer (25.2k $)"] = float(STARTING_BUDGET)
+            # 2. Ajout dynamique de la ligne Budget Cible
+            label_cible = f"🔴 Limite Budget Cible ({TOTAL_BUDGETED} $)"
+            df_sorted[label_cible] = float(TOTAL_BUDGETED)
+            columns_to_show.append(label_cible)
             
-            # 3. Ajout des lignes horizontales pour CHAQUE catégorie
+            # 3. Ajout dynamique de la ligne Budget Max
+            label_max = f"🚨 Budget Max avec Buffer ({STARTING_BUDGET} $)"
+            df_sorted[label_max] = float(STARTING_BUDGET)
+            columns_to_show.append(label_max)
+            
+            # 4. Ajout dynamique de CHAQUE catégorie
             for cat, limit in CATEGORIES.items():
-                df_sorted[f"📂 Limite {cat} ({limit} $)"] = float(limit)
+                label_cat = f"📂 Limite {cat} ({limit} $)"
+                df_sorted[label_cat] = float(limit)
+                columns_to_show.append(label_cat)
             
-            # Liste complète des colonnes à afficher
-            columns_to_show = [
-                "💰 Dépenses Totales Cumulées",
-                "🔴 Limite Budget Cible (19.3k $)",
-                "🚨 Budget Max avec Buffer (25.2k $)"
-            ] + [f"📂 Limite {cat} ({limit} $)" for cat in CATEGORIES.keys()]
+            # Préparation des données finales avec l'Axe X (Timestamp) [cite: 12, 13]
+            df_chart = df_sorted.set_index("Timestamp")[columns_to_show] [cite: 13]
             
-            # SÉCURITÉ : On ne garde que les colonnes qui existent réellement dans df_sorted
-            columns_to_show = [col for col in columns_to_show if col in df_sorted.columns]
-            
-            # Préparation des données finales avec l'Axe X (Timestamp)
-            df_chart = df_sorted.set_index("Timestamp")[columns_to_show]
-            
-            # 4. Attribution des couleurs (s'adapte dynamiquement au nombre de colonnes trouvées)
+            # 5. Palette de couleurs explicite [cite: 14]
             base_colors = [
-                "#29b5e8", "#ff4b4b", "#111111", 
-                "#2ca02c", "#9467bd", "#8c564b", 
-                "#e377c2", "#ff7f0e", "#bcbd22"
+                "#29b5e8",  # Bleu vif (Dépenses cumulées)
+                "#ff4b4b",  # Rouge (Cible)
+                "#111111",  # Noir (Max)
+                "#2ca02c",  # Vert (Bus)
+                "#9467bd",  # Violet (Car & Fuel)
+                "#8c564b",  # Marron (Wood)
+                "#e377c2",  # Rose (Food)
+                "#ff7f0e",  # Orange (Bread)
+                "#bcbd22"   # Olive (General material)
             ]
             chart_colors = base_colors[:len(columns_to_show)]
             
@@ -129,7 +136,6 @@ with tab1:
             st.info("En attente de données valides avec une date pour afficher le graphique.")
     else:
         st.info("Aucune dépense pour le moment. Le graphique affichera vos lignes de repères dès la première saisie.")
-
     st.subheader("📂 Statut par Catégorie")
     for cat, limit in CATEGORIES.items():
         cat_spent = df_expenses[df_expenses["Category"] == cat]["Amount"].sum()

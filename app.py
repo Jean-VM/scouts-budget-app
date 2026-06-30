@@ -83,59 +83,49 @@ with tab1:
     else:
         st.success(f"🟢 Tout va bien, le buffer de 5900$ est intact. Capacité restante avant danger : {TOTAL_BUDGETED - total_spent:.2f}$")
 
-    st.subheader("📈 Courbe, Limites Globales et Budgets par Catégorie")
+    st.subheader("📈 Évolution des Dépenses & Zone de Confiance")
     if not df_expenses.empty:
         df_copy = df_expenses.copy()
-        # Conversion propre en vraies dates
         df_copy["Timestamp"] = pd.to_datetime(df_copy["Timestamp"], errors='coerce')
         df_sorted = df_copy.dropna(subset=["Timestamp"]).sort_values("Timestamp")
         
         if not df_sorted.empty:
-            # 1. Initialisation des listes pour le graphique
-            columns_to_show = ["💰 Dépenses Totales Cumulées"]
+            # 1. Calcul du cumulé réel
+            df_sorted["💰 Dépenses Cumulées"] = df_sorted["Amount"].cumsum()
             
-            # Calcul de la courbe principale (Dépenses réelles cumulées)
-            df_sorted["💰 Dépenses Totales Cumulées"] = df_sorted["Amount"].cumsum()
+            # 2. Création du cadre temporel fixe (30 Juin au 31 Juillet 2026)
+            # On génère une plage de dates pour forcer l'axe X à s'étendre proprement
+            date_range = pd.date_range(start="2026-06-30", end="2026-07-31", freq="D")
+            df_timeline = pd.DataFrame(index=date_range)
+            df_timeline.index.name = "Timestamp"
             
-            # 2. Ajout dynamique de la ligne Budget Cible
-            label_cible = f"🔴 Limite Budget Cible ({TOTAL_BUDGETED} $)"
-            df_sorted[label_cible] = float(TOTAL_BUDGETED)
-            columns_to_show.append(label_cible)
+            # Associer les dépenses réelles à notre ligne du temps fixe
+            df_chart_data = df_sorted.set_index("Timestamp")[["💰 Dépenses Cumulées"]]
+            df_combined = df_timeline.join(df_chart_data, how="left")
             
-            # 3. Ajout dynamique de la ligne Budget Max
-            label_max = f"🚨 Budget Max avec Buffer ({STARTING_BUDGET} $)"
-            df_sorted[label_max] = float(STARTING_BUDGET)
-            columns_to_show.append(label_max)
+            # Remplir les jours sans dépenses par la dernière valeur connue (propagation)
+            df_combined["💰 Dépenses Cumulées"] = df_combined["💰 Dépenses Cumulées"].ffill().fillna(0)
             
-            # 4. Ajout dynamique de CHAQUE catégorie
-            for cat, limit in CATEGORIES.items():
-                label_cat = f"📂 Limite {cat} ({limit} $)"
-                df_sorted[label_cat] = float(limit)
-                columns_to_show.append(label_cat)
+            # 3. Ajout des repères demandés
+            df_combined["🔴 Limite Target"] = float(TOTAL_BUDGETED) # 19300
+            df_combined["🟢 Zone Buffer (Max)"] = float(STARTING_BUDGET) # 25200
             
-            # Préparation des données finales avec l'Axe X (Timestamp) 
-            df_chart = df_sorted.set_index("Timestamp")[columns_to_show]
+            # S'assurer que le graphique n'affiche rien au-dessus de notre cadre max (~25000)
+            # Streamlit ajuste automatiquement l'axe Y en fonction du maximum des données fournies
             
-            # 5. Palette de couleurs explicite 
-            base_colors = [
-                "#29b5e8",  # Bleu vif (Dépenses cumulées)
-                "#ff4b4b",  # Rouge (Cible)
-                "#111111",  # Noir (Max)
-                "#2ca02c",  # Vert (Bus)
-                "#9467bd",  # Violet (Car & Fuel)
-                "#8c564b",  # Marron (Wood)
-                "#e377c2",  # Rose (Food)
-                "#ff7f0e",  # Orange (Bread)
-                "#bcbd22"   # Olive (General material)
-            ]
-            chart_colors = base_colors[:len(columns_to_show)]
+            # 4. Affichage du graphique simplifié
+            # Ordre des colonnes dictant la superposition
+            columns_to_graph = ["💰 Dépenses Cumulées", "🔴 Limite Target", "🟢 Zone Buffer (Max)"]
             
-            # Affichage du graphique de lignes
-            st.line_chart(df_chart, color=chart_colors)
+            st.line_chart(
+                df_combined[columns_to_graph],
+                color=["#29b5e8", "#ff4b4b", "#2ca02c"]  # Bleu pour les dépenses, Rouge pour la limite, Vert pour le Buffer
+            )
         else:
             st.info("En attente de données valides avec une date pour afficher le graphique.")
     else:
         st.info("Aucune dépense pour le moment. Le graphique affichera vos lignes de repères dès la première saisie.")
+    
     st.subheader("📂 Statut par Catégorie")
     for cat, limit in CATEGORIES.items():
         cat_spent = df_expenses[df_expenses["Category"] == cat]["Amount"].sum()

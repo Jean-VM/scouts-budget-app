@@ -5,12 +5,14 @@ from datetime import datetime
 import requests  # Nécessaire pour envoyer l'e-mail via API
 import matplotlib.pyplot as plt  # <--- ADD THIS
 import matplotlib.dates as mdates  # <--- ADD THIS
+import smtplib  # Ajoutez ceci tout en haut de votre fichier si ce n'est pas fait
+from email.mime.text import MIMEText  # Ajoutez ceci tout en haut également
 # Configuration de la page mobile-friendly
 st.set_page_config(page_title="Scout Budget 2026", page_icon="🏕️", layout="centered")
 
 # --- CONFIGURATION DE L'EMAIL DU CHEF FINANCES ---
 # ⚠️ REMPLACE PAR TON ADRESSE EMAIL ICI :
-CHEF_FINANCES_EMAIL = jean.vandermeulen1160@gmail.com
+CHEF_FINANCES_EMAIL = "jean.vandermeulen1160@gmail.com"
 
 # 1. Connexion sécurisée au Google Sheet
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -37,27 +39,46 @@ CATEGORIES = {
 }
 
 
-# --- FONCTION POUR ENVOYER L'EMAIL ---
+
+
+# --- CONFIGURATION DE L'EMAIL DU CHEF FINANCES ---
+CHEF_FINANCES_EMAIL = "jean.vandermeulen1160@gmail.com"
+
+# --- CONFIGURATION DU COMPTE D'ENVOI AUTOMATIQUE ---
+# Vous pouvez utiliser le même mail ou un mail dédié aux alertes
+SENDER_EMAIL = "jean.vandermeulen1160@gmail.com" 
+SENDER_APP_PASSWORD = st.secrets["SENDER_APP_PASSWORD"]
+
+# --- FONCTION POUR ENVOYER L'EMAIL VIA SMTP DIRECT ---
 def send_email_notification(leader_name, title, amount, category):
-    # Envoi direct vers l'adresse email configurée (FormSubmit s'occupe de la masquer plus tard)
-    url = f"https://formsubmit.co/{CHEF_FINANCES_EMAIL}"
+    # Création du contenu du mail
+    body = (
+        f"Salut !\n\n"
+        f"{leader_name} vient de déclarer une dépense payée de sa poche.\n\n"
+        f"📌 Détails :\n"
+        f"- Dépense : {title}\n"
+        f"- Montant : {amount} $\n"
+        f"- Catégorie : {category}\n\n"
+        f"Pense à le rembourser rapidement."
+    )
     
-    # Payload utilisant la syntaxe de formulaire attendue par FormSubmit
-    payload = {
-        "_subject": f"🚨 Demande de remboursement Scout - {leader_name}",
-        "_captcha": "false",  # Indispensable pour éviter que l'API bloque sur un robot-test de Google
-        "Chef": leader_name,
-        "Dépense": title,
-        "Montant": f"{amount} $",
-        "Catégorie": category,
-        "Note": f"Salut ! {leader_name} vient de déclarer une dépense payée de sa poche. Pense à le rembourser."
-    }
-    
+    msg = MIMEText(body)
+    msg["Subject"] = f"🚨 Demande de remboursement Scout - {leader_name}"
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = CHEF_FINANCES_EMAIL
+
     try:
-        # data= au lieu de json= simule un vrai formulaire de page web
-        response = requests.post(url, data=payload)
-        return response.status_code == 200
-    except Exception:
+        # Connexion sécurisée au serveur de messagerie (Exemple ici configuré pour Gmail)
+        # Si vous utilisez Outlook/Hotmail, remplacez par : ("smtp-mail.outlook.com", 587)
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()  # Chiffrement de la connexion
+        server.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
+        server.sendmail(SENDER_EMAIL, [CHEF_FINANCES_EMAIL], msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        # En cas d'erreur, elle s'affichera brièvement dans votre panneau de logs Streamlit pour diagnostiquer
+        print(f"Erreur SMTP: {e}")
         return False
 
 # --- CHARGEMENT DES DONNÉES ---

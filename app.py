@@ -3,7 +3,8 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import requests  # Nécessaire pour envoyer l'e-mail via API
-
+import matplotlib.pyplot as plt  # <--- ADD THIS
+import matplotlib.dates as mdates  # <--- ADD THIS
 # Configuration de la page mobile-friendly
 st.set_page_config(page_title="Scout Budget 2026", page_icon="🏕️", layout="centered")
 
@@ -83,48 +84,67 @@ with tab1:
     else:
         st.success(f"🟢 Tout va bien, le buffer de 5900$ est intact. Capacité restante avant danger : {TOTAL_BUDGETED - total_spent:.2f}$")
 
+
     st.subheader("📈 Évolution des Dépenses & Zone de Confiance")
     if not df_expenses.empty:
         df_copy = df_expenses.copy()
-        df_copy["Timestamp"] = pd.to_datetime(df_copy["Timestamp"], errors='coerce')
-        df_sorted = df_copy.dropna(subset=["Timestamp"]).sort_values("Timestamp")
+        # Conversion propre en vraies dates (en gardant uniquement le jour YYYY-MM-DD pour le regroupement)
+        df_copy["Date"] = pd.to_datetime(df_copy["Timestamp"], errors='coerce').dt.normalize()
+        df_sorted = df_copy.dropna(subset=["Date"]).sort_values("Date")
         
         if not df_sorted.empty:
-            # 1. Calcul du cumulé réel
-            df_sorted["💰 Dépenses Cumulées"] = df_sorted["Amount"].cumsum()
+            # 1. Sommer les dépenses par jour au cas où il y en a plusieurs le même jour
+            df_daily = df_sorted.groupby("Date")["Amount"].sum().reset_index()
             
-            # 2. Création du cadre temporel fixe (30 Juin au 31 Juillet 2026)
-            # On génère une plage de dates pour forcer l'axe X à s'étendre proprement
+            # 2. Créer la timeline fixe du 30 Juin au 31 Juillet 2026
             date_range = pd.date_range(start="2026-06-30", end="2026-07-31", freq="D")
             df_timeline = pd.DataFrame(index=date_range)
-            df_timeline.index.name = "Timestamp"
+            df_timeline.index.name = "Date"
             
-            # Associer les dépenses réelles à notre ligne du temps fixe
-            df_chart_data = df_sorted.set_index("Timestamp")[["💰 Dépenses Cumulées"]]
-            df_combined = df_timeline.join(df_chart_data, how="left")
+            # 3. Fusionner les dépenses réelles sur la timeline complète
+            df_daily = df_daily.set_index("Date")
+            df_combined = df_timeline.join(df_daily, how="left").fillna(0)
             
-            # Remplir les jours sans dépenses par la dernière valeur connue (propagation)
-            df_combined["💰 Dépenses Cumulées"] = df_combined["💰 Dépenses Cumulées"].ffill().fillna(0)
+            # 4. Calcul du VRAI cumulé au fil des jours
+            df_combined["💰 Dépenses Cumulées"] = df_combined["Amount"].cumsum()
             
-            # 3. Ajout des repères demandés
-            df_combined["🔴 Limite Target"] = float(TOTAL_BUDGETED) # 19300
-            df_combined["🟢 Zone Buffer (Max)"] = float(STARTING_BUDGET) # 25200
+            # Repères fixes
+            limit_target = float(TOTAL_BUDGETED)  # 19300
+            buffer_max = float(STARTING_BUDGET)   # 25200
             
-            # S'assurer que le graphique n'affiche rien au-dessus de notre cadre max (~25000)
-            # Streamlit ajuste automatiquement l'axe Y en fonction du maximum des données fournies
+            # 5. Construction du graphique STATIQUE avec Matplotlib (Pas de zoom, pas de mouvement)
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
             
-            # 4. Affichage du graphique simplifié
-            # Ordre des colonnes dictant la superposition
-            columns_to_graph = ["💰 Dépenses Cumulées", "🔴 Limite Target", "🟢 Zone Buffer (Max)"]
+            fig, ax = plt.subplots(figsize=(10, 5))
             
-            st.line_chart(
-                df_combined[columns_to_graph],
-                color=["#29b5e8", "#ff4b4b", "#2ca02c"]  # Bleu pour les dépenses, Rouge pour la limite, Vert pour le Buffer
-            )
+            # Tracer les lignes
+            ax.plot(df_combined.index, df_combined["💰 Dépenses Cumulées"], color="#29b5e8", linewidth=3, label="Dépenses Cumulées")
+            ax.axhline(y=limit_target, color="#ff4b4b", linestyle="--", linewidth=2, label=f"Limite Target ({limit_target}$)")
+            ax.axhline(y=buffer_max, color="#2ca02c", linestyle="-.", linewidth=2, label=f"Zone Buffer Max ({buffer_max}$)")
+            
+            # Forcer les limites STRICTES des axes (Cadre fixe)
+            ax.set_xlim(pd.Timestamp("2026-06-30"), pd.Timestamp("2026-07-31"))
+            ax.set_ylim(0, 25000)
+            
+            # Formatage des axes
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+            ax.xaxis.set_major_locator(mdates.DayLocator(interval=5)) # Un repère tous les 5 jours
+            plt.xticks(rotation=45)
+            
+            ax.set_ylabel("Montant ($)")
+            ax.grid(True, linestyle=":", alpha=0.6)
+            ax.legend(loc="upper left")
+            
+            # Affichage dans Streamlit en tant qu'image fixe
+            st.pyplot(fig)
+            
         else:
             st.info("En attente de données valides avec une date pour afficher le graphique.")
     else:
         st.info("Aucune dépense pour le moment. Le graphique affichera vos lignes de repères dès la première saisie.")
+
+
     
     st.subheader("📂 Statut par Catégorie")
     for cat, limit in CATEGORIES.items():

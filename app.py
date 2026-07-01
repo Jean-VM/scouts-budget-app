@@ -36,30 +36,27 @@ CATEGORIES = {
     "General material": 1000
 }
 
-# --- FONCTION POUR ENVOYER L'EMAIL ---
+
 # --- FONCTION POUR ENVOYER L'EMAIL ---
 def send_email_notification(leader_name, title, amount, category):
-    # CHANGEMENT ICI : On utilise l'endpoint AJAX officiel de FormSubmit
-    url = "https://formsubmit.co/ajax/jean.vandermeulen1160@gmail.com"
+    # Envoi direct vers l'adresse email configurée (FormSubmit s'occupe de la masquer plus tard)
+    url = f"https://formsubmit.co/{CHEF_FINANCES_EMAIL}"
     
+    # Payload utilisant la syntaxe de formulaire attendue par FormSubmit
     payload = {
-        "_subject": f"🚨 Demande de remboursement Scout - {leader_name}", # FormSubmit utilise '_subject' pour le titre du mail
+        "_subject": f"🚨 Demande de remboursement Scout - {leader_name}",
+        "_captcha": "false",  # Indispensable pour éviter que l'API bloque sur un robot-test de Google
         "Chef": leader_name,
         "Dépense": title,
         "Montant": f"{amount} $",
         "Catégorie": category,
-        "Message": f"Salut ! {leader_name} vient de déclarer une dépense payée de sa poche. Pense à le rembourser."
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Note": f"Salut ! {leader_name} vient de déclarer une dépense payée de sa poche. Pense à le rembourser."
     }
     
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        # FormSubmit retourne un JSON contenant "success": "true" en AJAX
-        return response.status_code == 200 and response.json().get("success") == "true"
+        # data= au lieu de json= simule un vrai formulaire de page web
+        response = requests.post(url, data=payload)
+        return response.status_code == 200
     except Exception:
         return False
 

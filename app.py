@@ -37,19 +37,29 @@ CATEGORIES = {
 }
 
 # --- FONCTION POUR ENVOYER L'EMAIL ---
+# --- FONCTION POUR ENVOYER L'EMAIL ---
 def send_email_notification(leader_name, title, amount, category):
-    url = f"https://formsubmit.co/el/guzado"
+    # CHANGEMENT ICI : On utilise l'endpoint AJAX officiel de FormSubmit
+    url = "https://formsubmit.co/ajax/jean.vandermeulen1160@gmail.com"
+    
     payload = {
-        "Sujet": f"🚨 Demande de remboursement Scout - {leader_name}",
+        "_subject": f"🚨 Demande de remboursement Scout - {leader_name}", # FormSubmit utilise '_subject' pour le titre du mail
         "Chef": leader_name,
         "Dépense": title,
         "Montant": f"{amount} $",
         "Catégorie": category,
         "Message": f"Salut ! {leader_name} vient de déclarer une dépense payée de sa poche. Pense à le rembourser."
     }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
     try:
-        response = requests.post(url, json=payload)
-        return response.status_code == 200
+        response = requests.post(url, json=payload, headers=headers)
+        # FormSubmit retourne un JSON contenant "success": "true" en AJAX
+        return response.status_code == 200 and response.json().get("success") == "true"
     except Exception:
         return False
 

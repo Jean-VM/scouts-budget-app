@@ -10,7 +10,7 @@ st.set_page_config(page_title="Scout Budget 2026", page_icon="🏕️", layout="
 
 # --- CONFIGURATION DE L'EMAIL DU CHEF FINANCES ---
 # ⚠️ REMPLACE PAR TON ADRESSE EMAIL ICI :
-CHEF_FINANCES_EMAIL = "jean.vandermeulen1160@gmail.com"
+CHEF_FINANCES_EMAIL = jean.vandermeulen1160@gmail.com
 
 # 1. Connexion sécurisée au Google Sheet
 conn = st.connection("gsheets", type=GSheetsConnection)
